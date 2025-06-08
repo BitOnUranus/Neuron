@@ -328,7 +328,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="grid gap-6">
         {contents.length === 0 ? (
           <div className="text-center py-12 bg-white/50 rounded-xl">
-            <p className="text-gray-500">No content created yet. Click "Create New Content" to get started.</p>
+            <p className="text-gray-500">No content created yet. Click "Create New Content\" to get started.</p>
           </div>
         ) : (
           contents.map((content) => (
