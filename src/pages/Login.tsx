@@ -5,8 +5,8 @@ import { validateAdminCredentials, generateId } from '../utils/storage';
 import { Lock, Mail, AlertCircle } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('admin@example.com');
+  const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -18,7 +18,8 @@ export const Login: React.FC = () => {
     setError('');
 
     try {
-      if (validateAdminCredentials(email, password)) {
+      const isValid = await validateAdminCredentials(email, password);
+      if (isValid) {
         const adminUser = {
           id: generateId(),
           email: email,
@@ -31,6 +32,7 @@ export const Login: React.FC = () => {
       }
     } catch (err) {
       setError('Login failed. Please try again.');
+      console.error('Login error:', err);
     } finally {
       setLoading(false);
     }
@@ -58,7 +60,7 @@ export const Login: React.FC = () => {
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-blue-800 text-sm">
-                <strong>Demo Credentials:</strong><br />
+                <strong>Demo Credentials (Pre-filled):</strong><br />
                 Email: admin@example.com<br />
                 Password: admin123
               </p>

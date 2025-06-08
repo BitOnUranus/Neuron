@@ -16,20 +16,28 @@ export const ContentView: React.FC = () => {
   const [youtubeConfig, setYoutubeConfig] = useState<any>(null);
 
   useEffect(() => {
-    if (id) {
-      const contentData = getContentById(id);
+    loadContent();
+  }, [id]);
+
+  const loadContent = async () => {
+    if (!id) return;
+    
+    try {
+      const contentData = await getContentById(id);
       setContent(contentData);
       
       if (contentData?.isPublic) {
         setHasAccess(true);
       }
       
-      const config = getYouTubeConfig();
+      const config = await getYouTubeConfig();
       setYoutubeConfig(config);
-      
+    } catch (error) {
+      console.error('Error loading content:', error);
+    } finally {
       setLoading(false);
     }
-  }, [id]);
+  };
 
   const handleYouTubeSubscribe = () => {
     if (!content || !youtubeConfig) return;
@@ -70,7 +78,8 @@ export const ContentView: React.FC = () => {
 
     try {
       // Check if already subscribed
-      if (isSubscribed(email, id)) {
+      const alreadySubscribed = await isSubscribed(email, id);
+      if (alreadySubscribed) {
         setHasAccess(true);
         setSubscribing(false);
         return;
@@ -89,21 +98,27 @@ export const ContentView: React.FC = () => {
           youtubeSubscribed: false
         };
 
-        saveSubscription(subscription);
+        await saveSubscription(subscription);
         setHasAccess(true);
       }
     } catch (err) {
       setError('Subscription failed. Please try again.');
+      console.error('Subscription error:', err);
     } finally {
       setSubscribing(false);
     }
   };
 
-  const checkExistingSubscription = () => {
+  const checkExistingSubscription = async () => {
     if (!id || !email) return;
     
-    if (isSubscribed(email, id)) {
-      setHasAccess(true);
+    try {
+      const subscribed = await isSubscribed(email, id);
+      if (subscribed) {
+        setHasAccess(true);
+      }
+    } catch (error) {
+      console.error('Error checking subscription:', error);
     }
   };
 

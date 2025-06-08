@@ -28,35 +28,48 @@ export const AdminDashboard: React.FC = () => {
     loadYouTubeConfig();
   }, []);
 
-  const loadContents = () => {
-    const data = getContent();
-    setContents(data);
+  const loadContents = async () => {
+    try {
+      const data = await getContent();
+      setContents(data);
+    } catch (error) {
+      console.error('Error loading content:', error);
+    }
   };
 
-  const loadYouTubeConfig = () => {
-    const config = getYouTubeConfig();
-    if (config) {
-      setYoutubeConfig(config);
+  const loadYouTubeConfig = async () => {
+    try {
+      const config = await getYouTubeConfig();
+      if (config) {
+        setYoutubeConfig(config);
+      }
+    } catch (error) {
+      console.error('Error loading YouTube config:', error);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const contentData: Content = {
-      id: editingContent?.id || generateId(),
-      title: formData.title,
-      description: formData.description,
-      body: formData.body,
-      isPublic: formData.isPublic,
-      youtubeChannelUrl: formData.youtubeChannelUrl || youtubeConfig.channelUrl,
-      attachments: formData.attachments,
-      createdAt: editingContent?.createdAt || new Date().toISOString()
-    };
+    try {
+      const contentData: Content = {
+        id: editingContent?.id || generateId(),
+        title: formData.title,
+        description: formData.description,
+        body: formData.body,
+        isPublic: formData.isPublic,
+        youtubeChannelUrl: formData.youtubeChannelUrl || youtubeConfig.channelUrl,
+        attachments: formData.attachments,
+        createdAt: editingContent?.createdAt || new Date().toISOString()
+      };
 
-    await saveContent(contentData);
-    loadContents();
-    resetForm();
+      await saveContent(contentData);
+      await loadContents();
+      resetForm();
+    } catch (error) {
+      console.error('Error saving content:', error);
+      alert('Failed to save content. Please try again.');
+    }
   };
 
   const resetForm = () => {
@@ -85,10 +98,15 @@ export const AdminDashboard: React.FC = () => {
     setIsCreating(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this content?')) {
-      deleteContent(id);
-      loadContents();
+      try {
+        await deleteContent(id);
+        await loadContents();
+      } catch (error) {
+        console.error('Error deleting content:', error);
+        alert('Failed to delete content. Please try again.');
+      }
     }
   };
 
@@ -102,10 +120,15 @@ export const AdminDashboard: React.FC = () => {
     window.open(`/content/${id}`, '_blank');
   };
 
-  const handleYouTubeConfigSave = () => {
-    saveYouTubeConfig(youtubeConfig);
-    setShowYouTubeConfig(false);
-    alert('YouTube configuration saved!');
+  const handleYouTubeConfigSave = async () => {
+    try {
+      await saveYouTubeConfig(youtubeConfig);
+      setShowYouTubeConfig(false);
+      alert('YouTube configuration saved!');
+    } catch (error) {
+      console.error('Error saving YouTube config:', error);
+      alert('Failed to save YouTube configuration. Please try again.');
+    }
   };
 
   return (
@@ -305,7 +328,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="grid gap-6">
         {contents.length === 0 ? (
           <div className="text-center py-12 bg-white/50 rounded-xl">
-            <p className="text-gray-500">No content created yet. Click "Create New Content\" to get started.</p>
+            <p className="text-gray-500">No content created yet. Click "Create New Content" to get started.</p>
           </div>
         ) : (
           contents.map((content) => (

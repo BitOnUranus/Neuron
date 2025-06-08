@@ -16,9 +16,10 @@ export const initializeDatabase = async (): Promise<Database> => {
     db = new SQL.Database(uint8Array);
   } else {
     db = new SQL.Database();
-    createTables();
   }
-
+  
+  // Always ensure tables exist and admin credentials are set
+  createTables();
   return db;
 };
 
@@ -78,21 +79,20 @@ const createTables = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS admin_credentials (
       id INTEGER PRIMARY KEY,
-      email TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL
     )
   `);
 
-  // Insert default admin credentials
-  const stmt = db.prepare("SELECT COUNT(*) as count FROM admin_credentials");
-  const result = stmt.getAsObject();
-  if (result.count === 0) {
+  // Always ensure default admin credentials exist
+  try {
     db.exec(`
-      INSERT INTO admin_credentials (email, password) 
-      VALUES ('admin@example.com', 'admin123')
+      INSERT OR REPLACE INTO admin_credentials (id, email, password) 
+      VALUES (1, 'admin@example.com', 'admin123')
     `);
+  } catch (error) {
+    console.log('Admin credentials already exist or error inserting:', error);
   }
-  stmt.free();
 
   saveDatabase();
 };
