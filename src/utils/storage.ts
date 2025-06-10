@@ -48,7 +48,7 @@ export const getContent = async (): Promise<Content[]> => {
 
   const stmt = db.prepare(`
     SELECT c.*, 
-           GROUP_CONCAT(
+           json_group_array(
              json_object(
                'id', f.id,
                'name', f.name,
@@ -57,7 +57,7 @@ export const getContent = async (): Promise<Content[]> => {
                'url', f.url,
                'uploadedAt', f.uploaded_at
              )
-           ) as attachments
+           ) FILTER (WHERE f.id IS NOT NULL) as attachments
     FROM content c
     LEFT JOIN file_attachments f ON c.id = f.content_id
     GROUP BY c.id
@@ -69,7 +69,7 @@ export const getContent = async (): Promise<Content[]> => {
   while (stmt.step()) {
     const row = stmt.getAsObject();
     const attachments = row.attachments && row.attachments !== 'null'
-      ? row.attachments.toString().split(',').map((a: string) => JSON.parse(a))
+      ? JSON.parse(row.attachments.toString())
       : [];
 
     content.push({
@@ -94,7 +94,7 @@ export const getContentById = async (id: string): Promise<Content | null> => {
 
   const stmt = db.prepare(`
     SELECT c.*, 
-           GROUP_CONCAT(
+           json_group_array(
              json_object(
                'id', f.id,
                'name', f.name,
@@ -103,7 +103,7 @@ export const getContentById = async (id: string): Promise<Content | null> => {
                'url', f.url,
                'uploadedAt', f.uploaded_at
              )
-           ) as attachments
+           ) FILTER (WHERE f.id IS NOT NULL) as attachments
     FROM content c
     LEFT JOIN file_attachments f ON c.id = f.content_id
     WHERE c.id = ?
@@ -115,7 +115,7 @@ export const getContentById = async (id: string): Promise<Content | null> => {
   if (stmt.step()) {
     const row = stmt.getAsObject();
     const attachments = row.attachments && row.attachments !== 'null'
-      ? row.attachments.toString().split(',').map((a: string) => JSON.parse(a))
+      ? JSON.parse(row.attachments.toString())
       : [];
 
     stmt.free();
