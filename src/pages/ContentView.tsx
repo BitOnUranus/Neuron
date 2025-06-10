@@ -39,18 +39,33 @@ export const ContentView: React.FC = () => {
     }
   };
 
+  const formatYouTubeSubscriptionUrl = (channelUrl: string): string => {
+    // If the URL already has sub_confirmation, return as is
+    if (channelUrl.includes('sub_confirmation=1')) {
+      return channelUrl;
+    }
+    
+    // Add sub_confirmation=1 parameter
+    const separator = channelUrl.includes('?') ? '&' : '?';
+    return `${channelUrl}${separator}sub_confirmation=1`;
+  };
+
   const handleYouTubeSubscribe = () => {
-    if (!content || !youtubeConfig) return;
+    if (!content || !youtubeConfig || !email) {
+      setError('Please enter your email address first.');
+      return;
+    }
 
     const channelUrl = content.youtubeChannelUrl || youtubeConfig.channelUrl;
+    const subscriptionUrl = formatYouTubeSubscriptionUrl(channelUrl);
     
-    // Open YouTube channel in new tab
-    window.open(channelUrl, '_blank');
+    // Open YouTube channel subscription page in new tab
+    window.open(subscriptionUrl, '_blank');
     
-    // After a short delay, show the confirmation button
+    // Show confirmation dialog after a short delay
     setTimeout(() => {
       const confirmed = window.confirm(
-        `Please subscribe to our YouTube channel and then click OK to access the content.\n\nChannel: ${youtubeConfig.channelName}`
+        `Please subscribe to our YouTube channel and then click OK to access the content.\n\nChannel: ${youtubeConfig.channelName}\n\nHave you subscribed?`
       );
       
       if (confirmed && id) {
@@ -63,8 +78,12 @@ export const ContentView: React.FC = () => {
           youtubeSubscribed: true
         };
 
-        saveSubscription(subscription);
-        setHasAccess(true);
+        saveSubscription(subscription).then(() => {
+          setHasAccess(true);
+        }).catch((error) => {
+          console.error('Error saving subscription:', error);
+          setError('Failed to save subscription. Please try again.');
+        });
       }
     }, 2000);
   };
@@ -187,25 +206,6 @@ export const ContentView: React.FC = () => {
               <p className="text-gray-600">{content.description}</p>
             </div>
 
-            {youtubeConfig?.enabled && channelUrl && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center space-x-2 mb-2">
-                  <Youtube className="h-5 w-5 text-red-600" />
-                  <span className="font-medium text-red-800">YouTube Subscription Required</span>
-                </div>
-                <p className="text-sm text-red-700 mb-3">
-                  Subscribe to <strong>{youtubeConfig.channelName}</strong> to unlock this premium content.
-                </p>
-                <button
-                  onClick={handleYouTubeSubscribe}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                >
-                  <Youtube className="h-5 w-5" />
-                  <span>Subscribe on YouTube</span>
-                </button>
-              </div>
-            )}
-
             <form onSubmit={handleEmailSubscribe} className="space-y-6">
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -234,6 +234,30 @@ export const ContentView: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {youtubeConfig?.enabled && channelUrl && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Youtube className="h-5 w-5 text-red-600" />
+                    <span className="font-medium text-red-800">YouTube Subscription Required</span>
+                  </div>
+                  <p className="text-sm text-red-700 mb-3">
+                    Subscribe to <strong>{youtubeConfig.channelName}</strong> to unlock this premium content.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleYouTubeSubscribe}
+                    disabled={!email || subscribing}
+                    className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Youtube className="h-5 w-5" />
+                    <span>{subscribing ? 'Processing...' : 'Subscribe on YouTube'}</span>
+                  </button>
+                  <p className="text-xs text-red-600 mt-2 text-center">
+                    Please enter your email first, then click to subscribe
+                  </p>
+                </div>
+              )}
 
               {!youtubeConfig?.enabled && (
                 <button
