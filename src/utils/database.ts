@@ -35,7 +35,8 @@ const createTables = () => {
       body TEXT NOT NULL,
       created_at TEXT NOT NULL,
       is_public INTEGER DEFAULT 0,
-      youtube_channel_url TEXT
+      youtube_channel_url TEXT,
+      youtube_channel_id TEXT
     )
   `);
 
@@ -61,6 +62,7 @@ const createTables = () => {
       content_id TEXT NOT NULL,
       subscribed_at TEXT NOT NULL,
       youtube_subscribed INTEGER DEFAULT 0,
+      google_access_token TEXT,
       FOREIGN KEY (content_id) REFERENCES content (id) ON DELETE CASCADE
     )
   `);
@@ -71,6 +73,7 @@ const createTables = () => {
       id INTEGER PRIMARY KEY,
       channel_url TEXT NOT NULL,
       channel_name TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
       enabled INTEGER DEFAULT 1
     )
   `);

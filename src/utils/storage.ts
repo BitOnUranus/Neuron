@@ -17,8 +17,8 @@ export const saveContent = async (content: Content): Promise<void> => {
 
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO content 
-    (id, title, description, body, created_at, is_public, youtube_channel_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (id, title, description, body, created_at, is_public, youtube_channel_url, youtube_channel_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run([
@@ -28,7 +28,8 @@ export const saveContent = async (content: Content): Promise<void> => {
     content.body,
     content.createdAt,
     content.isPublic ? 1 : 0,
-    content.youtubeChannelUrl || null
+    content.youtubeChannelUrl || null,
+    content.youtubeChannelId || null
   ]);
   stmt.free();
 
@@ -80,6 +81,7 @@ export const getContent = async (): Promise<Content[]> => {
       createdAt: row.created_at as string,
       isPublic: Boolean(row.is_public),
       youtubeChannelUrl: row.youtube_channel_url as string || undefined,
+      youtubeChannelId: row.youtube_channel_id as string || undefined,
       attachments
     });
   }
@@ -127,6 +129,7 @@ export const getContentById = async (id: string): Promise<Content | null> => {
       createdAt: row.created_at as string,
       isPublic: Boolean(row.is_public),
       youtubeChannelUrl: row.youtube_channel_url as string || undefined,
+      youtubeChannelId: row.youtube_channel_id as string || undefined,
       attachments
     };
   }
@@ -176,8 +179,8 @@ export const saveSubscription = async (subscription: Subscription): Promise<void
 
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO subscriptions 
-    (id, email, content_id, subscribed_at, youtube_subscribed)
-    VALUES (?, ?, ?, ?, ?)
+    (id, email, content_id, subscribed_at, youtube_subscribed, google_access_token)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run([
@@ -185,7 +188,8 @@ export const saveSubscription = async (subscription: Subscription): Promise<void
     subscription.email,
     subscription.contentId,
     subscription.subscribedAt,
-    subscription.youtubeSubscribed ? 1 : 0
+    subscription.youtubeSubscribed ? 1 : 0,
+    subscription.googleAccessToken || null
   ]);
   stmt.free();
   saveDatabase();
@@ -205,7 +209,8 @@ export const getSubscriptions = async (): Promise<Subscription[]> => {
       email: row.email as string,
       contentId: row.content_id as string,
       subscribedAt: row.subscribed_at as string,
-      youtubeSubscribed: Boolean(row.youtube_subscribed)
+      youtubeSubscribed: Boolean(row.youtube_subscribed),
+      googleAccessToken: row.google_access_token as string || undefined
     });
   }
 
@@ -234,11 +239,11 @@ export const saveYouTubeConfig = async (config: YouTubeChannelConfig): Promise<v
   if (!db) return;
 
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO youtube_config (id, channel_url, channel_name, enabled)
-    VALUES (1, ?, ?, ?)
+    INSERT OR REPLACE INTO youtube_config (id, channel_url, channel_name, channel_id, enabled)
+    VALUES (1, ?, ?, ?, ?)
   `);
 
-  stmt.run([config.channelUrl, config.channelName, config.enabled ? 1 : 0]);
+  stmt.run([config.channelUrl, config.channelName, config.channelId, config.enabled ? 1 : 0]);
   stmt.free();
   saveDatabase();
 };
@@ -255,6 +260,7 @@ export const getYouTubeConfig = async (): Promise<YouTubeChannelConfig | null> =
     return {
       channelUrl: row.channel_url as string,
       channelName: row.channel_name as string,
+      channelId: row.channel_id as string,
       enabled: Boolean(row.enabled)
     };
   }

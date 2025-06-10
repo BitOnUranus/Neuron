@@ -7,6 +7,7 @@ import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ContentView } from './pages/ContentView';
+import { AuthCallback } from './pages/AuthCallback';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/content/:id" element={<ContentView />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route
               path="/admin"
               element={

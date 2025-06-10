@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Content, Subscription } from '../types';
 import { getContentById, saveSubscription, isSubscribed, generateId, getYouTubeConfig } from '../utils/storage';
-import { Lock, Mail, CheckCircle, ArrowLeft, Youtube, Download, Eye } from 'lucide-react';
+import { Lock, Mail, CheckCircle, ArrowLeft, Youtube, Download, Eye, Chrome } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { GoogleAuthButton } from '../components/GoogleAuthButton';
+import { checkYouTubeSubscription, resolveChannelId } from '../utils/googleAuth';
 
 export const ContentView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,10 +16,27 @@ export const ContentView: React.FC = () => {
   const [subscribing, setSubscribing] = useState(false);
   const [error, setError] = useState('');
   const [youtubeConfig, setYoutubeConfig] = useState<any>(null);
+  const [authStep, setAuthStep] = useState<'email' | 'google-auth' | 'checking'>('email');
+  const [googleAuthData, setGoogleAuthData] = useState<any>(null);
 
   useEffect(() => {
     loadContent();
   }, [id]);
+
+  useEffect(() => {
+    // Listen for Google auth completion
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'google_auth_data' && e.newValue) {
+        const authData = JSON.parse(e.newValue);
+        setGoogleAuthData(authData);
+        localStorage.removeItem('google_auth_data'); // Clean up
+        handleGoogleAuthComplete(authData);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [content, youtubeConfig, email, id]);
 
   const loadContent = async () => {
     if (!id) return;
@@ -39,93 +58,107 @@ export const ContentView: React.FC = () => {
     }
   };
 
-  const formatYouTubeSubscriptionUrl = (channelUrl: string): string => {
-    // If the URL already has sub_confirmation, return as is
-    if (channelUrl.includes('sub_confirmation=1')) {
-      return channelUrl;
-    }
-    
-    // Add sub_confirmation=1 parameter
-    const separator = channelUrl.includes('?') ? '&' : '?';
-    return `${channelUrl}${separator}sub_confirmation=1`;
-  };
+  const handleGoogleAuthComplete = async (authData: any) => {
+    if (!content || !youtubeConfig || !id) return;
 
-  const handleYouTubeSubscribe = () => {
-    if (!content || !youtubeConfig || !email) {
-      setError('Please enter your email address first.');
-      return;
-    }
+    setAuthStep('checking');
+    setSubscribing(true);
+    setError('');
 
-    const channelUrl = content.youtubeChannelUrl || youtubeConfig.channelUrl;
-    const subscriptionUrl = formatYouTubeSubscriptionUrl(channelUrl);
-    
-    // Open YouTube channel subscription page in new tab
-    window.open(subscriptionUrl, '_blank');
-    
-    // Show confirmation dialog after a short delay
-    setTimeout(() => {
-      const confirmed = window.confirm(
-        `Please subscribe to our YouTube channel and then click OK to access the content.\n\nChannel: ${youtubeConfig.channelName}\n\nHave you subscribed?`
+    try {
+      // Get the target channel ID
+      const targetChannelUrl = content.youtubeChannelUrl || youtubeConfig.channelUrl;
+      let targetChannelId = content.youtubeChannelId || youtubeConfig.channelId;
+
+      if (!targetChannelId) {
+        targetChannelId = await resolveChannelId(targetChannelUrl);
+        if (!targetChannelId) {
+          throw new Error('Could not resolve YouTube channel ID');
+        }
+      }
+
+      // Check if user is subscribed to the channel
+      const isSubscribedToChannel = await checkYouTubeSubscription(
+        authData.accessToken,
+        targetChannelId
       );
-      
-      if (confirmed && id) {
+
+      if (isSubscribedToChannel) {
         // Create subscription record
         const subscription: Subscription = {
           id: generateId(),
-          email: email,
+          email: email || authData.userProfile.email,
           contentId: id,
           subscribedAt: new Date().toISOString(),
-          youtubeSubscribed: true
+          youtubeSubscribed: true,
+          googleAccessToken: authData.accessToken
         };
 
-        saveSubscription(subscription).then(() => {
-          setHasAccess(true);
-        }).catch((error) => {
-          console.error('Error saving subscription:', error);
-          setError('Failed to save subscription. Please try again.');
-        });
+        await saveSubscription(subscription);
+        setHasAccess(true);
+        setError('');
+      } else {
+        setError(`You need to subscribe to ${youtubeConfig.channelName} on YouTube to access this content.`);
+        setAuthStep('email');
       }
-    }, 2000);
+    } catch (error) {
+      console.error('Error checking YouTube subscription:', error);
+      setError('Failed to verify YouTube subscription. Please try again.');
+      setAuthStep('email');
+    } finally {
+      setSubscribing(false);
+    }
   };
 
-  const handleEmailSubscribe = async (e: React.FormEvent) => {
+  const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    if (youtubeConfig?.enabled) {
+      setAuthStep('google-auth');
+      setError('');
+    } else {
+      handleDirectSubscription();
+    }
+  };
+
+  const handleDirectSubscription = async () => {
     if (!id || !content) return;
 
     setSubscribing(true);
     setError('');
 
     try {
-      // Check if already subscribed
       const alreadySubscribed = await isSubscribed(email, id);
       if (alreadySubscribed) {
         setHasAccess(true);
-        setSubscribing(false);
         return;
       }
 
-      // If YouTube subscription is required and enabled
-      if (youtubeConfig?.enabled && !content.isPublic) {
-        handleYouTubeSubscribe();
-      } else {
-        // Direct subscription without YouTube requirement
-        const subscription: Subscription = {
-          id: generateId(),
-          email: email,
-          contentId: id,
-          subscribedAt: new Date().toISOString(),
-          youtubeSubscribed: false
-        };
+      const subscription: Subscription = {
+        id: generateId(),
+        email: email,
+        contentId: id,
+        subscribedAt: new Date().toISOString(),
+        youtubeSubscribed: false
+      };
 
-        await saveSubscription(subscription);
-        setHasAccess(true);
-      }
+      await saveSubscription(subscription);
+      setHasAccess(true);
     } catch (err) {
       setError('Subscription failed. Please try again.');
       console.error('Subscription error:', err);
     } finally {
       setSubscribing(false);
     }
+  };
+
+  const handleGoogleAuthStart = () => {
+    setError('');
+    setSubscribing(true);
   };
 
   const checkExistingSubscription = async () => {
@@ -185,8 +218,6 @@ export const ContentView: React.FC = () => {
   }
 
   if (!hasAccess && !content.isPublic) {
-    const channelUrl = content.youtubeChannelUrl || youtubeConfig?.channelUrl;
-    
     return (
       <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
@@ -196,7 +227,10 @@ export const ContentView: React.FC = () => {
             </div>
             <h2 className="text-3xl font-bold text-gray-900">Premium Content</h2>
             <p className="mt-2 text-gray-600">
-              {youtubeConfig?.enabled ? 'Subscribe to our YouTube channel to access this content' : 'Subscribe to access this exclusive content'}
+              {youtubeConfig?.enabled 
+                ? 'Verify your YouTube subscription to access this content' 
+                : 'Subscribe to access this exclusive content'
+              }
             </p>
           </div>
 
@@ -206,74 +240,85 @@ export const ContentView: React.FC = () => {
               <p className="text-gray-600">{content.description}</p>
             </div>
 
-            <form onSubmit={handleEmailSubscribe} className="space-y-6">
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
-              )}
-
-              <div>
-                <label htmlFor="email" className="sr-only">
-                  Email address
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onBlur={checkExistingSubscription}
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
-                    placeholder="Enter your email to subscribe"
-                  />
-                </div>
+            {error && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-red-700 text-sm">{error}</p>
               </div>
+            )}
 
-              {youtubeConfig?.enabled && channelUrl && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Youtube className="h-5 w-5 text-red-600" />
-                    <span className="font-medium text-red-800">YouTube Subscription Required</span>
+            {authStep === 'email' && (
+              <form onSubmit={handleEmailSubmit} className="space-y-6">
+                <div>
+                  <label htmlFor="email" className="sr-only">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Mail className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onBlur={checkExistingSubscription}
+                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                      placeholder="Enter your email address"
+                    />
                   </div>
-                  <p className="text-sm text-red-700 mb-3">
-                    Subscribe to <strong>{youtubeConfig.channelName}</strong> to unlock this premium content.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleYouTubeSubscribe}
-                    disabled={!email || subscribing}
-                    className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                  >
-                    <Youtube className="h-5 w-5" />
-                    <span>{subscribing ? 'Processing...' : 'Subscribe on YouTube'}</span>
-                  </button>
-                  <p className="text-xs text-red-600 mt-2 text-center">
-                    Please enter your email first, then click to subscribe
-                  </p>
                 </div>
-              )}
 
-              {!youtubeConfig?.enabled && (
                 <button
                   type="submit"
-                  disabled={subscribing}
+                  disabled={subscribing || !email}
                   className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {subscribing ? 'Subscribing...' : 'Subscribe & Access Content'}
+                  {youtubeConfig?.enabled ? 'Continue to Verification' : 'Subscribe & Access Content'}
                 </button>
-              )}
-            </form>
+              </form>
+            )}
+
+            {authStep === 'google-auth' && youtubeConfig?.enabled && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <Youtube className="h-12 w-12 text-red-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Verify YouTube Subscription
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Sign in with Google to verify that you're subscribed to <strong>{youtubeConfig.channelName}</strong>
+                  </p>
+                </div>
+
+                <GoogleAuthButton
+                  onAuthStart={handleGoogleAuthStart}
+                  disabled={subscribing}
+                />
+
+                <div className="text-center">
+                  <button
+                    onClick={() => setAuthStep('email')}
+                    className="text-sm text-indigo-600 hover:text-indigo-500"
+                  >
+                    ← Back to email
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {authStep === 'checking' && (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Verifying your YouTube subscription...</p>
+              </div>
+            )}
 
             <div className="mt-6 text-center">
               <p className="text-xs text-gray-500">
                 {youtubeConfig?.enabled 
-                  ? 'By subscribing to our YouTube channel, you\'ll get instant access to this premium content.'
+                  ? 'We use Google OAuth to securely verify your YouTube subscriptions. Your data is not stored.'
                   : 'By subscribing, you\'ll get instant access to this premium content.'
                 }
               </p>

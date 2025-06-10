@@ -3,6 +3,7 @@ import { Content, YouTubeChannelConfig } from '../types';
 import { getContent, saveContent, deleteContent, generateId, saveYouTubeConfig, getYouTubeConfig } from '../utils/storage';
 import { Plus, Edit, Trash2, Eye, Copy, Settings, Youtube } from 'lucide-react';
 import { FileUpload } from '../components/FileUpload';
+import { resolveChannelId } from '../utils/googleAuth';
 
 export const AdminDashboard: React.FC = () => {
   const [contents, setContents] = useState<Content[]>([]);
@@ -12,6 +13,7 @@ export const AdminDashboard: React.FC = () => {
   const [youtubeConfig, setYoutubeConfig] = useState<YouTubeChannelConfig>({
     channelUrl: '',
     channelName: '',
+    channelId: '',
     enabled: true
   });
   const [formData, setFormData] = useState({
@@ -20,6 +22,7 @@ export const AdminDashboard: React.FC = () => {
     body: '',
     isPublic: false,
     youtubeChannelUrl: '',
+    youtubeChannelId: '',
     attachments: []
   });
 
@@ -59,6 +62,7 @@ export const AdminDashboard: React.FC = () => {
         body: formData.body,
         isPublic: formData.isPublic,
         youtubeChannelUrl: formData.youtubeChannelUrl || youtubeConfig.channelUrl,
+        youtubeChannelId: formData.youtubeChannelId || youtubeConfig.channelId,
         attachments: formData.attachments,
         createdAt: editingContent?.createdAt || new Date().toISOString()
       };
@@ -79,6 +83,7 @@ export const AdminDashboard: React.FC = () => {
       body: '', 
       isPublic: false, 
       youtubeChannelUrl: '',
+      youtubeChannelId: '',
       attachments: []
     });
     setIsCreating(false);
@@ -93,6 +98,7 @@ export const AdminDashboard: React.FC = () => {
       body: content.body,
       isPublic: content.isPublic,
       youtubeChannelUrl: content.youtubeChannelUrl || '',
+      youtubeChannelId: content.youtubeChannelId || '',
       attachments: content.attachments || []
     });
     setIsCreating(true);
@@ -122,7 +128,19 @@ export const AdminDashboard: React.FC = () => {
 
   const handleYouTubeConfigSave = async () => {
     try {
-      await saveYouTubeConfig(youtubeConfig);
+      // Resolve channel ID if not provided
+      let channelId = youtubeConfig.channelId;
+      if (!channelId && youtubeConfig.channelUrl) {
+        channelId = await resolveChannelId(youtubeConfig.channelUrl) || '';
+      }
+
+      const configToSave = {
+        ...youtubeConfig,
+        channelId
+      };
+
+      await saveYouTubeConfig(configToSave);
+      setYoutubeConfig(configToSave);
       setShowYouTubeConfig(false);
       alert('YouTube configuration saved!');
     } catch (error) {
@@ -131,12 +149,28 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleChannelUrlChange = async (url: string) => {
+    setYoutubeConfig({ ...youtubeConfig, channelUrl: url });
+    
+    // Auto-resolve channel ID when URL changes
+    if (url) {
+      try {
+        const channelId = await resolveChannelId(url);
+        if (channelId) {
+          setYoutubeConfig(prev => ({ ...prev, channelId }));
+        }
+      } catch (error) {
+        console.error('Error resolving channel ID:', error);
+      }
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Content Management</h1>
-          <p className="text-gray-600">Create and manage your premium content with file uploads</p>
+          <p className="text-gray-600">Create and manage your premium content with YouTube subscription verification</p>
         </div>
         <button
           onClick={() => setShowYouTubeConfig(true)}
@@ -172,10 +206,25 @@ export const AdminDashboard: React.FC = () => {
                 <input
                   type="url"
                   value={youtubeConfig.channelUrl}
-                  onChange={(e) => setYoutubeConfig({ ...youtubeConfig, channelUrl: e.target.value })}
+                  onChange={(e) => handleChannelUrlChange(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   placeholder="https://youtube.com/@yourchannel"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Channel ID
+                </label>
+                <input
+                  type="text"
+                  value={youtubeConfig.channelId}
+                  onChange={(e) => setYoutubeConfig({ ...youtubeConfig, channelId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  placeholder="UC... (auto-resolved from URL)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Channel ID is auto-resolved from the URL. You can also enter it manually.
+                </p>
               </div>
               <div className="flex items-center">
                 <input
@@ -186,7 +235,7 @@ export const AdminDashboard: React.FC = () => {
                   className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
                 />
                 <label htmlFor="enabled" className="ml-2 block text-sm text-gray-700">
-                  Require YouTube subscription for content access
+                  Require YouTube subscription verification for content access
                 </label>
               </div>
             </div>
@@ -268,17 +317,31 @@ export const AdminDashboard: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Custom YouTube Channel URL (Optional)
-              </label>
-              <input
-                type="url"
-                value={formData.youtubeChannelUrl}
-                onChange={(e) => setFormData({ ...formData, youtubeChannelUrl: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="Override default YouTube channel URL for this content"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom YouTube Channel URL (Optional)
+                </label>
+                <input
+                  type="url"
+                  value={formData.youtubeChannelUrl}
+                  onChange={(e) => setFormData({ ...formData, youtubeChannelUrl: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="Override default YouTube channel URL"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom YouTube Channel ID (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.youtubeChannelId}
+                  onChange={(e) => setFormData({ ...formData, youtubeChannelId: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="UC... channel ID"
+                />
+              </div>
             </div>
 
             <div className="flex items-center">
@@ -328,7 +391,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="grid gap-6">
         {contents.length === 0 ? (
           <div className="text-center py-12 bg-white/50 rounded-xl">
-            <p className="text-gray-500">No content created yet. Click "Create New Content\" to get started.</p>
+            <p className="text-gray-500">No content created yet. Click "Create New Content" to get started.</p>
           </div>
         ) : (
           contents.map((content) => (
@@ -345,6 +408,11 @@ export const AdminDashboard: React.FC = () => {
                     {content.attachments && content.attachments.length > 0 && (
                       <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
                         {content.attachments.length} file(s)
+                      </span>
+                    )}
+                    {content.youtubeChannelId && (
+                      <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-800">
+                        YouTube Verified
                       </span>
                     )}
                   </div>
