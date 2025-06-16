@@ -2,7 +2,10 @@
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id';
 const GOOGLE_REDIRECT_URI = `${window.location.origin}/auth/callback`;
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || 'your-youtube-api-key';
-
+console.log('Google Client ID:', GOOGLE_CLIENT_ID);
+console.log('YouTube API Key:', YOUTUBE_API_KEY);
+console.log('Google Redirect URI:', GOOGLE_REDIRECT_URI);
+// Ensure the environment variables are set
 export interface GoogleAuthConfig {
   clientId: string;
   redirectUri: string;
@@ -13,7 +16,9 @@ export const getGoogleAuthUrl = (): string => {
   const config: GoogleAuthConfig = {
     clientId: GOOGLE_CLIENT_ID,
     redirectUri: GOOGLE_REDIRECT_URI,
-    scope: 'https://www.googleapis.com/auth/youtube.readonly email profile'
+    //scope: 'https://www.googleapis.com/auth/youtube.readonly email profile' // this will be for readonly scope
+    // 'https://www.googleapis.com/auth/youtube.force-ssl' for full access including subscriptions
+    scope: 'https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
   };
 
   const params = new URLSearchParams({
@@ -100,7 +105,43 @@ export const checkYouTubeSubscription = async (
       );
 
       if (isSubscribed) {
+        console.log(`Channel ${targetChannelId} is subscribed.`);
         break;
+      }
+      if(!isSubscribed){
+        // subscription not found now the script will automatically subscribe the user
+        console.log(`Channel ${targetChannelId} is not subscribed.`);
+        const subscribeUrl = new URL('https://www.googleapis.com/youtube/v3/subscriptions');
+        subscribeUrl.searchParams.append('part', 'snippet');    
+        
+        const subscribeResponse = await fetch(subscribeUrl.toString(), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            snippet: {
+              resourceId: {
+                kind: 'youtube#channel',
+                channelId: targetChannelId
+              }
+            }
+          })
+        });
+        if (!subscribeResponse.ok) {
+          console.error('YouTube API error on subscription:', subscribeResponse.status, subscribeResponse.statusText);
+          // Check if error is due to insufficient permissions
+          if (subscribeResponse.status === 403) {
+            console.error('403 Forbidden - Make sure the OAuth scope includes youtube.force-ssl');
+            throw new Error('Insufficient permissions. OAuth scope must include youtube.force-ssl');
+          }
+          throw new Error('Failed to subscribe to YouTube channel');
+        }
+        console.log(`Successfully subscribed to channel ${targetChannelId}.`);
+      } else {
+        // If the channel is not found in subscriptions
+        console.log(`Channel ${targetChannelId} not found in subscriptions.`);
       }
 
       nextPageToken = data.nextPageToken || '';

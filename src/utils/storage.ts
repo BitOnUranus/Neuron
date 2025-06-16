@@ -179,8 +179,8 @@ export const saveSubscription = async (subscription: Subscription): Promise<void
 
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO subscriptions 
-    (id, email, content_id, subscribed_at, youtube_subscribed, google_access_token)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (id, email, content_id, subscribed_at, youtube_subscribed)
+    VALUES (?, ?, ?, ?, ?)
   `);
 
   stmt.run([
@@ -188,8 +188,7 @@ export const saveSubscription = async (subscription: Subscription): Promise<void
     subscription.email,
     subscription.contentId,
     subscription.subscribedAt,
-    subscription.youtubeSubscribed ? 1 : 0,
-    subscription.googleAccessToken || null
+    subscription.youtubeSubscribed ? 1 : 0
   ]);
   stmt.free();
   saveDatabase();
