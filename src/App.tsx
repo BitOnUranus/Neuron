@@ -28,6 +28,27 @@ function App() {
               }
             />
           </Routes>
+          <footer style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            padding: '8px 16px',
+            background: '#000',
+            borderRadius: '20px',
+          }}>
+            <a 
+              href="https://bolt.new"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: '#fff',
+                textDecoration: 'none',
+                fontSize: '14px',
+              }}
+            >
+              Built with bolt.new ⚡
+            </a>
+          </footer>
         </Layout>
       </Router>
     </AuthProvider>
